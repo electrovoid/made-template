@@ -1,0 +1,118 @@
+composite blocktype TextFileExtractor {
+    property url oftype text;
+
+    input inputName oftype None;
+    output outputName oftype File;
+
+    block FileExtractor oftype HttpExtractor {
+        url: url;
+    }
+
+    block FileTextInterpreter oftype TextFileInterpreter {
+        encoding: "latin2";
+    }
+
+    inputName
+        ->FileExtractor
+        ->FileTextInterpreter
+        ->outputName;
+}
+
+composite blocktype CSVExtractor {
+    property url oftype text;
+    property delimiter oftype text: ',';
+    property enclosing oftype text: '';
+    property enclosingEscape oftype text: '';
+
+    input inputName oftype None;
+    output outputName oftype Sheet;
+
+    block TextFileExtractor oftype TextFileExtractor {
+        url: url;
+    }
+
+    block FileCSVInterpreter oftype CSVInterpreter {
+        delimiter: delimiter;
+        enclosing: enclosing;
+        enclosingEscape: enclosingEscape;
+    }
+
+    inputName
+        ->TextFileExtractor
+        ->FileCSVInterpreter
+        ->outputName;
+}
+
+pipeline GoodsPipeline {
+
+    block GoodsCSVExtractor oftype CSVExtractor {
+        url: 'https://www-genesis.destatis.de/genesis/downloads/00/tables/46131-0014_00.csv';
+        delimiter: ';';
+    }
+
+    block HeaderFooterDeleter oftype RowDeleter {
+        delete: [
+            row 1, row 2, row 3, row 4, row 5, row 6,
+            row 7, row 8, row 41337, row 41338, row 41339
+        ];
+    }
+
+    block ColumnDeleter oftype ColumnDeleter {
+        delete: [
+            column F, column G, column H, column I, column J, column K,
+            column L, column M, column N, column O, column P, column Q,
+            column R, column S, column T, column U, column V, column W,
+            column X, column Y, column Z, column AA, column AB, column AC,
+            column AD, column AE, column AF, column AG, column AH, column AI,
+            column AJ, column AK, column AL, column AM, column AN, column AO,
+            column AP, column AQ, column AR, column AS
+        ];
+    }
+
+    block GoodsTableInterpreter oftype TableInterpreter {
+        header: false;
+        columns: [
+            "year" oftype PositiveValType, 
+            "month" oftype GermanMonthType, 
+            "goods_id" oftype GoodsIdTypeVal, 
+            "goods_name" oftype text, 
+            "goods_source" oftype text, 
+            "abroad" oftype PositiveValType, 
+            "total" oftype PositiveValType, 
+        ];
+    }
+
+    block GoodsLoader oftype SQLiteLoader {
+        table: 'goods';
+        file: 'goodsTransportedByTrain.sqlite';
+    }
+
+    GoodsCSVExtractor
+        -> HeaderFooterDeleter
+        -> ColumnDeleter
+        -> GoodsTableInterpreter
+        -> GoodsLoader;
+}
+
+valuetype PositiveValType oftype integer {
+    constraints : [PositiveValConstraint];
+}
+
+valuetype GermanMonthType oftype text {
+    constraints: [GermanMonthConstraint];
+}
+
+valuetype GoodsIdTypeVal oftype text {
+    constraints: [GoodsIdTypeConstraint];
+}
+
+constraint PositiveValConstraint on integer: value >= 0;
+
+constraint GoodsIdTypeConstraint on text: value matches /^NST7-[A-Z0-9]{3}$/;
+
+constraint GermanMonthConstraint on text:
+    value in [
+        'Januar', 'Februar', 'März', 'April', 'Mai',
+        'Juni', 'Juli', 'August', 'September',
+        'Oktober', 'November', 'Dezember'
+    ];
